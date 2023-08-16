@@ -69,7 +69,9 @@ contourpy==1.1.0
 cycler==0.11.0
     # via matplotlib
 datasets==2.14.4
-    # via -r requirements.in
+    # via
+    #   -r requirements.in
+    #   evaluate
 debugpy==1.6.7.post1
     # via ipykernel
 decorator==5.1.1
@@ -79,9 +81,12 @@ defusedxml==0.7.1
 dill==0.3.7
     # via
     #   datasets
+    #   evaluate
     #   multiprocess
 docker-pycreds==0.4.0
     # via wandb
+evaluate==0.4.0
+    # via -r requirements.in
 executing==1.2.0
     # via stack-data
 fastjsonschema==2.18.0
@@ -102,6 +107,7 @@ frozenlist==1.4.0
 fsspec[http]==2023.6.0
     # via
     #   datasets
+    #   evaluate
     #   huggingface-hub
 gitdb==4.0.10
     # via gitpython
@@ -110,6 +116,7 @@ gitpython==3.1.32
 huggingface-hub==0.16.4
     # via
     #   datasets
+    #   evaluate
     #   transformers
 idna==3.4
     # via
@@ -226,7 +233,9 @@ multidict==6.0.4
     #   aiohttp
     #   yarl
 multiprocess==0.70.15
-    # via datasets
+    # via
+    #   datasets
+    #   evaluate
 nbclient==0.8.0
     # via nbconvert
 nbconvert==7.7.3
@@ -254,6 +263,7 @@ numpy==1.25.2
     #   accelerate
     #   contourpy
     #   datasets
+    #   evaluate
     #   matplotlib
     #   pandas
     #   pyarrow
@@ -267,6 +277,7 @@ packaging==23.1
     # via
     #   accelerate
     #   datasets
+    #   evaluate
     #   huggingface-hub
     #   ipykernel
     #   jupyter-server
@@ -281,6 +292,7 @@ pandas==2.0.3
     # via
     #   -r requirements.in
     #   datasets
+    #   evaluate
     #   seaborn
 pandocfilters==1.5.0
     # via nbconvert
@@ -369,12 +381,16 @@ regex==2023.8.8
 requests==2.31.0
     # via
     #   datasets
+    #   evaluate
     #   fsspec
     #   huggingface-hub
     #   jupyterlab-server
     #   kaggle
+    #   responses
     #   transformers
     #   wandb
+responses==0.18.0
+    # via evaluate
 rfc3339-validator==0.1.4
     # via
     #   jsonschema
@@ -449,6 +465,7 @@ tornado==6.3.2
 tqdm==4.66.1
     # via
     #   datasets
+    #   evaluate
     #   huggingface-hub
     #   kaggle
     #   transformers
@@ -483,6 +500,7 @@ urllib3==2.0.4
     # via
     #   kaggle
     #   requests
+    #   responses
     #   sentry-sdk
 wandb==0.15.8
     # via -r requirements.in
@@ -499,7 +517,9 @@ websocket-client==1.6.1
 widgetsnbextension==4.0.8
     # via ipywidgets
 xxhash==3.3.0
-    # via datasets
+    # via
+    #   datasets
+    #   evaluate
 yarl==1.9.2
     # via aiohttp
 

@@ -3,6 +3,7 @@ wandb
 torch
 transformers[torch]
 datasets
+evaluate
 pandas
 numpy
 matplotlib
