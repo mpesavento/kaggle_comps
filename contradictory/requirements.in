@@ -1,10 +1,12 @@
 kaggle
 wandb
 torch
-transformers
+transformers[torch]
+datasets
 pandas
 numpy
 matplotlib
 seaborn
 jupyter
 scikit-learn
+sentencepiece
