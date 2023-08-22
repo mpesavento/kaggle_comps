@@ -42,15 +42,20 @@ elif torch.backends.mps.is_available() and torch.backends.mps.is_built():
     print("Found MPS, may not work on some torch ops!" )
     device = "mps"
 
+id2label = {0: "entailment", 1: "neutral", 2: "contradiction"}
+label2id = {v:k for k,v in id2label.items()}
+
 default_config = SimpleNamespace(
     framework="torch",
     batch_size=16,
-    num_epochs=1,
+    num_epochs=5,
     lr=1e-5,
     arch="xlm-roberta-base",
     seed=SEED,
     log_preds=True,
     classifier_dropout=0.0,
+    id2label=id2label,
+    label2id=label2id,
 )
 
 
@@ -145,9 +150,12 @@ def compute_metrics(eval_pred):
     predictions, labels = eval_pred
     predictions = np.argmax(predictions, axis=1)
 
-    ent_ix = np.where(labels==label2id["entailment"])[0]
-    neut_ix = np.where(labels==label2id["neutral"])[0]
-    contra_ix = np.where(labels==label2id["contradiction"])[0]
+    # ent_ix = np.where(labels==label2id["entailment"])[0]
+    # neut_ix = np.where(labels==label2id["neutral"])[0]
+    # contra_ix = np.where(labels==label2id["contradiction"])[0]
+    ent_ix = np.where(labels==0)[0]
+    neut_ix = np.where(labels==1)[0]
+    contra_ix = np.where(labels==2)[0]
     metrics = {
         "accuracy": accuracy_fn.compute(
             predictions=predictions, references=labels)["accuracy"],
