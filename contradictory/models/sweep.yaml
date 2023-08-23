@@ -10,7 +10,7 @@ project: contradictory
 
 # Metric to optimize
 metric:
-  name: accuracy
+  name: "eval/accuracy"
   goal: maximize
 
 
@@ -18,11 +18,18 @@ metric:
 parameters:
   log_preds:
     value: False
-  lr:
-    distribution: log_uniform_values
-    min: 1e-5
-    max: 1e-3
+  # lr:
+  #   distribution: log_uniform_values
+  #   min: 1e-5
+  #   max: 1e-3
   batch_size:
     values: [4, 8, 16]
   classifier_dropout:
     values: [0, 0.1, 0.2]
+  # batch_size:
+  #   values: [8, 16]
+  # classifier_dropout:
+  #   values: [0.2]
+  # num_epochs:
+  #   value: 1
+    

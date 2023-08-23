@@ -193,7 +193,7 @@ def train(config):
     trainer_config = TrainingArguments(
         output_dir=output_dir,
         evaluation_strategy="epoch",
-        save_strategy="epoch",
+        save_strategy="no",
         learning_rate=config.lr,
         num_train_epochs=config.num_epochs,
         weight_decay=0.01,
@@ -215,6 +215,7 @@ def train(config):
     
     # train it!
     model_trained = trainer.train()
+    trainer.save_model()
     
     table = create_predictions_table(tokenized_datasets['validation'], trainer, id2label)
     wandb.finish()
