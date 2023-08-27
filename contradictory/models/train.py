@@ -23,14 +23,10 @@ from transformers import (
 from datasets import Dataset, DatasetDict
 import evaluate
 
+from params import *
+
 warnings.filterwarnings('ignore')
 
-# Constants
-DATA_PATH = "data"
-WANDB_PROJECT = "contradictory"
-RAW_DATA_AT = "contra_raw"
-PROCESSED_DATA_AT = "contra_split"
-SEED = 98765
 
 
 device = "cpu"
@@ -50,7 +46,7 @@ default_config = SimpleNamespace(
     batch_size=16,
     num_epochs=5,
     lr=1e-5,
-    arch="xlm-roberta-base",
+    arch=DEFAULT_ARCH,
     seed=SEED,
     log_preds=True,
     classifier_dropout=0.0,
@@ -190,16 +186,22 @@ def train(config):
 
     output_dir = os.path.join(DATA_PATH, f"contradiction-training-{str(int(time.time()))}")
 
+    # log model on wandb
+    # https://docs.wandb.ai/guides/integrations/huggingface#advanced-features
+    os.environ["WANDB_LOG_MODEL"] = "end"
+    
     trainer_config = TrainingArguments(
         output_dir=output_dir,
         evaluation_strategy="epoch",
+        save_total_limit = 2,
         save_strategy="no",
+        load_best_model_at_end=True,
         learning_rate=config.lr,
         num_train_epochs=config.num_epochs,
         weight_decay=0.01,
         logging_steps=1,
         report_to="wandb",  # enable logging to W&B
-        # run_name=f"{MODEL_NAME}-baseline",  # name of the W&B run (optional)
+        run_name=MODEL_NAME,  # name of the W&B run (optional)
     )
 
     # set up the trainer
@@ -211,6 +213,7 @@ def train(config):
         tokenizer=tokenizer,
         data_collator=DataCollatorWithPadding(tokenizer=tokenizer),
         compute_metrics=compute_metrics,
+
     )
     
     # train it!
