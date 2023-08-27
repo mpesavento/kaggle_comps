@@ -194,7 +194,7 @@ def train(config):
         output_dir=output_dir,
         evaluation_strategy="epoch",
         save_total_limit = 2,
-        save_strategy="no",
+        save_strategy="epoch",
         load_best_model_at_end=True,
         learning_rate=config.lr,
         num_train_epochs=config.num_epochs,
