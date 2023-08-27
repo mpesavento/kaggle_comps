@@ -8,6 +8,9 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 import wandb
 
+from sklearn.metrics import ConfusionMatrixDisplay
+from IPython.display import display, Markdown
+
 from datasets import Dataset, DatasetDict
 import evaluate
 from transformers import XLMRobertaTokenizer
@@ -35,11 +38,11 @@ def get_df(processed_dataset_dir, is_test=False):
     """load a dataframe from the artifact data"""
     df = pd.read_csv(processed_dataset_dir / 'data_split.csv')
     if not is_test:
-        # drop test for now, split in valid & train
         df = df[df.Stage != 'test'].reset_index(drop=True)
         df['is_valid'] = df.Stage == 'valid'
     else:
-        df = df[df.Stage == 'test'].reset_index(drop=True)
+        df = df[df.Stage != 'train'].reset_index(drop=True)
+        df['is_valid'] = df.Stage == 'valid'
     return df
 
 def tokenize_function_batch(examples):
@@ -52,9 +55,15 @@ def get_data(df):
     Load the data from df into a dataset
     This is a bit more important if we are loading images/labels
     """
-    train_dataset = Dataset.from_pandas(df[df["is_valid"]!=True])
+    # when passed to datablock, this will return test at index 0 and valid at index 1
+    
     valid_dataset = Dataset.from_pandas(df[df["is_valid"]])
-    datasets = DatasetDict({"train": train_dataset, "validation": valid_dataset})
+    if "train" in df.Stage.unique():
+        train_dataset = Dataset.from_pandas(df[df["is_valid"]!=True])
+        datasets = DatasetDict({"train": train_dataset, "validation": valid_dataset})
+    elif "test" in df.Stage.unique():
+        test_dataset = Dataset.from_pandas(df[df["is_valid"]!=True])
+        datasets = DatasetDict({"test": test_dataset, "validation": valid_dataset})
     tokenized_datasets = datasets.map(tokenize_function_batch, batched=True)
     return tokenized_datasets
 
@@ -81,18 +90,21 @@ def compute_metrics(eval_pred):
     return metrics
 
 def get_predictions(dataset, trainer, metric_prefix=None):
-    """Create predictions using the trainer object"""
+    """
+    Create predictions using the trainer object
+    Returns tuple: (probabilities, predictions, targets)
+    """
     metric_prefix = metric_prefix or "validate"
     predictions = trainer.predict(dataset, metric_key_prefix=metric_prefix)
     X_pred = np.argmax(predictions.predictions, axis=1)
-    labels = predictions.label_ids
-    return X_pred, labels
+    targets = predictions.label_ids
+    return predictions.predictions, X_pred, targets
 
 def create_predictions_table(dataset, trainer):
     """Creates a wandb table with predictions and targets side by side"""
-    X_pred, y_labels = get_predictions(dataset, trainer, metric_prefix="validate")
-    if not np.array_equal(y_labels, [dataset[i]["label"] for i in range(len(dataset))]):
-        raise ValueError("prediction labels do not match dataset labels")
+    X_proba, X_pred, targets = get_predictions(dataset, trainer, metric_prefix="validate")
+    if not np.array_equal(targets, [dataset[i]["label"] for i in range(len(dataset))]):
+        raise ValueError("prediction targets do not match dataset labels")
     
     col_names = ["id", "premise", "hypothesis", "lang_abv", "label", "predict"]
 
@@ -111,19 +123,57 @@ def create_predictions_table(dataset, trainer):
     return table
     
 def count_by_class(arr, cidxs): 
-    return [(arr == n).sum(axis=(1,2)).numpy() for n in cidxs]
+    return [(arr == n).sum() for n in cidxs]
 
-def log_hist(c):
+def log_hist(c, target_counts, pred_counts):
     _, bins, _ = plt.hist(target_counts[c],  bins=10, alpha=0.5, density=True, label='target')
     _ = plt.hist(pred_counts[c], bins=bins, alpha=0.5, density=True, label='pred')
     plt.legend(loc='upper right')
     plt.title(CLASSES[c])
-    img_path = f'figures/hist_val_{CLASSES[c]}'
+    img_folder = "figures"
+    os.makedirs(img_folder, exist_ok=True)
+    img_name = f"hist_val_{CLASSES[c]}"
+    img_path = os.path.join(img_folder, img_name)
     plt.savefig(img_path)
     plt.clf()
     im = plt.imread(f'{img_path}.png')
-    wandb.log({img_path: wandb.Image(f'{img_path}.png', caption=img_path)})
+    wandb.log({img_name: wandb.Image(f'{img_path}.png', caption=img_name)})
 
+
+def display_diagnostics(trainer, dataset, metric_prefix=None, return_vals=False):
+    """
+    Display a confusion matrix for the trainer.
+    
+    You can create a test dataloader using the `test_dl()` method like so:
+    >> dls = ... # You usually create this from the DataBlocks api, in this library it is get_data()
+    >> tdls = dls.test_dl(test_dataframe, with_labels=True)
+    
+    See: https://docs.fast.ai/tutorial.pets.html#adding-a-test-dataloader-for-inference
+    
+    """
+    metric_prefix = metric_prefix or "validate"
+    y_proba, y_pred, targets = get_predictions(dataset, trainer, metric_prefix=metric_prefix)
+    classes = list(CLASSES.values())
+    y_true = targets
+    
+    tdf, pdf = [pd.DataFrame(r).value_counts().to_frame(c) for r,c in zip((y_true, y_pred) , ['y_true', 'y_pred'])]
+    countdf = tdf.join(pdf, how='outer').reset_index(drop=True).fillna(0).astype(int).rename(index=CLASSES)
+    countdf = countdf/countdf.sum() 
+    display(Markdown('### % Of samples In Each Class'))
+    display(countdf.style.format('{:.1%}'))
+    
+    
+    disp = ConfusionMatrixDisplay.from_predictions(y_true=y_true, y_pred=y_pred,
+                                                   display_labels=classes,
+                                                   normalize='pred')
+    fig = disp.ax_.get_figure()
+    fig.set_figwidth(10)
+    fig.set_figheight(10) 
+    disp.ax_.set_title('Confusion Matrix', fontdict={'fontsize': 32, 'fontweight': 'medium'})
+    fig.show()
+    fig.autofmt_xdate(rotation=45)
+
+    if return_vals: return countdf, disp
 
 # ---------------------------
 # main
@@ -134,7 +184,7 @@ artifact = run.use_artifact('mpesavento/model-registry/contradictory_sentences:l
 
 artifact_dir = Path(artifact.download())
 
-_model_pth = artifact_dir.ls()[0]
+_model_pth = artifact_dir #.ls()[0]
 model_path = _model_pth.parent.absolute()/_model_pth.stem
 
 producer_run = artifact.logged_by()
@@ -148,13 +198,13 @@ tokenized_datasets = get_data(test_valid_df)
 # load the model
 
 model = XLMRobertaForSequenceClassification.from_pretrained(model_path)
-output_dir = os.path.join(DATA_PATH, f"contradiction-training-{str(int(time.time()))}")
+output_dir = os.path.join(DATA_PATH, f"contradiction-eval-{str(int(time.time()))}")
 
 trainer_config = TrainingArguments(
     output_dir=output_dir,
     evaluation_strategy="epoch",
     save_total_limit = 2,
-    save_strategy="no",
+    save_strategy="epoch",
     load_best_model_at_end=True,
     learning_rate=config.lr,
     num_train_epochs=config.num_epochs,
@@ -175,38 +225,32 @@ trainer = Trainer(
 
 )
 
-val_metrics = learn.validate(ds_idx=1)
-test_metrics = learn.validate(ds_idx=0)
-
-val_metric_names = ['val_loss'] + [f'val_{x.name}' for x in learn.metrics]
-val_results = {val_metric_names[i] : val_metrics[i] for i in range(len(val_metric_names))}
-for k,v in val_results.items(): 
+val_metrics = trainer.evaluate(tokenized_datasets['validation'], metric_key_prefix="val")
+test_metrics = trainer.evaluate(tokenized_datasets['test'], metric_key_prefix="test")
+for k,v in val_metrics.items(): 
+    wandb.summary[k] = v
+for k,v in test_metrics.items(): 
     wandb.summary[k] = v
 
-test_metric_names = ['test_loss'] + [f'test_{x.name}' for x in learn.metrics]
-test_results = {test_metric_names[i] : test_metrics[i] for i in range(len(test_metric_names))}
-for k,v in test_results.items(): 
-    wandb.summary[k] = v
-    
+# log the validation results
+val_table = create_predictions_table(tokenized_datasets['validation'], trainer)
 
-val_table = create_predictions_table(test_valid_dls, trainer)
-
-val_probs, val_targs = learn.get_preds(ds_idx=1)
-val_preds = val_probs.argmax(dim=1)
+# make the distribution histograms
+val_probs, val_preds, val_targs = get_predictions(tokenized_datasets["validation"], trainer)
 class_idxs = CLASSES.keys()
-
+# not as important with categorical classification, more important with segmentation
 target_counts = count_by_class(val_targs, class_idxs)
 pred_counts = count_by_class(val_preds, class_idxs)
-
 for c in class_idxs:
-    log_hist(c)
+    log_hist(c, target_counts, pred_counts)
     
-val_count_df, val_disp = display_diagnostics(learner=learn, ds_idx=1, return_vals=True)
+
+val_count_df, val_disp = display_diagnostics(trainer, tokenized_datasets['validation'], return_vals=True)
 wandb.log({'val_confusion_matrix': val_disp.figure_})
 val_ct_table = wandb.Table(dataframe=val_count_df)
 wandb.log({'val_count_table': val_ct_table})
 
-test_count_df, test_disp = display_diagnostics(learner=learn, ds_idx=0, return_vals=True)
+test_count_df, test_disp = display_diagnostics(trainer, tokenized_datasets['test'], return_vals=True)
 wandb.log({'test_confusion_matrix': test_disp.figure_})
 test_ct_table = wandb.Table(dataframe=test_count_df)
 wandb.log({'test_count_table': test_ct_table})
