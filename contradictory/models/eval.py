@@ -3,6 +3,7 @@ import time
 from pathlib import Path
 import warnings
 import numpy as np
+import seaborn as sns
 import pandas as pd
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -125,20 +126,63 @@ def create_predictions_table(dataset, trainer):
 def count_by_class(arr, cidxs): 
     return [(arr == n).sum() for n in cidxs]
 
-def log_hist(c, target_counts, pred_counts):
-    _, bins, _ = plt.hist(target_counts[c],  bins=10, alpha=0.5, density=True, label='target')
-    _ = plt.hist(pred_counts[c], bins=bins, alpha=0.5, density=True, label='pred')
+def log_label_hist(target_counts, pred_counts):
+    """Get a histogram of target/pred counts"""
+    plt.bar(CLASSES.values(), target_counts, alpha=0.5, label="target")
+    plt.bar(CLASSES.values(), pred_counts, alpha=0.5, label="pred")
     plt.legend(loc='upper right')
-    plt.title(CLASSES[c])
+    plt.title("target/pred by class")
     img_folder = "figures"
     os.makedirs(img_folder, exist_ok=True)
-    img_name = f"hist_val_{CLASSES[c]}"
+    img_name = f"hist_val_targetpred"
     img_path = os.path.join(img_folder, img_name)
     plt.savefig(img_path)
     plt.clf()
     im = plt.imread(f'{img_path}.png')
     wandb.log({img_name: wandb.Image(f'{img_path}.png', caption=img_name)})
 
+def log_lang_hist(valid_df, clsix):
+    """Create histograms of the target/pred over each language"""
+    target_lang_counts = valid_df[valid_df.label == clsix].groupby("lang_abv")["label"].count()
+    pred_lang_counts = valid_df[valid_df.predict == clsix].groupby("lang_abv")["predict"].count()
+    plt.bar(langs, target_lang_counts, alpha=0.5, label="target")
+    plt.bar(langs, pred_lang_counts, alpha=0.5, label="pred")
+    plt.legend(loc='upper right')
+    plt.title(f"{CLASSES[clsix]}: target/pred by lang")
+    img_folder = "figures"
+    os.makedirs(img_folder, exist_ok=True)
+    img_name = f"hist_val_lang_{CLASSES[clsix]}"
+    img_path = os.path.join(img_folder, img_name)
+    plt.savefig(img_path)
+    plt.clf()
+    im = plt.imread(f'{img_path}.png')
+    wandb.log({img_name: wandb.Image(f'{img_path}.png', caption=img_name)})
+    
+
+def get_lang_accuracy(valid_df):
+    """Do some fancy categorical plots over languages"""
+    img_folder = "figures"
+    os.makedirs(img_folder, exist_ok=True)
+    sns.catplot(data=valid_df, x="label_name", y="is_correct", hue="lang_abv", kind="bar",
+                height=8, aspect=15/8)
+    plt.title("accuracy by label")
+    img_name = f"val_acc_label"
+    img_path = os.path.join(img_folder, img_name)
+    plt.savefig(img_path)
+    plt.clf()
+    im = plt.imread(f'{img_path}.png')
+    wandb.log({img_name: wandb.Image(f'{img_path}.png', caption=img_name)})
+    
+    sns.catplot(data=valid_df, x="lang_abv", y="is_correct", hue="label_name", kind="bar",
+                height=8, aspect=15/8)
+    plt.title("accuracy by language")
+    img_name = f"val_acc_lang"
+    img_path = os.path.join(img_folder, img_name)
+    plt.savefig(img_path)
+    plt.clf()
+    im = plt.imread(f'{img_path}.png')
+    wandb.log({img_name: wandb.Image(f'{img_path}.png', caption=img_name)})
+    
 
 def display_diagnostics(trainer, dataset, metric_prefix=None, return_vals=False):
     """
@@ -238,12 +282,24 @@ val_table = create_predictions_table(tokenized_datasets['validation'], trainer)
 # make the distribution histograms
 val_probs, val_preds, val_targs = get_predictions(tokenized_datasets["validation"], trainer)
 class_idxs = CLASSES.keys()
+
+# create plots for label and language accuracy
+valid_df = test_valid_df[test_valid_df["is_valid"]].copy()
+valid_df["predict"] = val_preds
+valid_df["label_name"] = valid_df["label"].map(lambda x: CLASSES[x])
+valid_df["is_correct"] = (valid_df["label"]==valid_df["predict"]).astype(int)
+
+get_lang_accuracy(valid_df)
+
+langs = valid_df.lang_abv.unique()
+for c in class_idxs:
+    log_lang_hist(valid_df, c)
+
 # not as important with categorical classification, more important with segmentation
 target_counts = count_by_class(val_targs, class_idxs)
 pred_counts = count_by_class(val_preds, class_idxs)
-for c in class_idxs:
-    log_hist(c, target_counts, pred_counts)
-    
+log_label_hist(target_counts, pred_counts)
+
 
 val_count_df, val_disp = display_diagnostics(trainer, tokenized_datasets['validation'], return_vals=True)
 wandb.log({'val_confusion_matrix': val_disp.figure_})
